@@ -347,12 +347,7 @@ void fix_apple_common_ecore() {
     );
 }
 
-void fix_apple_common() {
-    if(is_ecore()) {
-        fix_apple_common_ecore();
-        return;
-    }
-
+void fix_apple_common_pcore() {
     __asm__ volatile(
         // "unlock the core for debugging"
         "msr OSLAR_EL1, xzr\n"
