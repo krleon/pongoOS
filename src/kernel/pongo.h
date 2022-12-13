@@ -499,8 +499,7 @@ extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
 extern uint64_t linear_kvm_alloc(uint32_t size);
 static inline _Bool is_16k(void)
 {
-    return gIs16k;
-    // return ((get_mmfr0() >> 20) & 0xf) == 0x1;
+    return ((get_mmfr0() >> 20) & 0xf) == 0x1;
 }
 static inline void flush_tlb(void)
 {

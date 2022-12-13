@@ -32,6 +32,8 @@
 #define MAX_WANT_PAGES_IN_FREELIST 512
 void* free_list;
 bool is_16k_v = false;
+bool gIs16k;
+extern int pl_printf_(const char* format, ...);
 void* page_alloc() {
     return phystokv(ppage_alloc());
 }
@@ -107,6 +109,14 @@ void map_range_map(uint64_t* tt0, uint64_t va, uint64_t pa, uint64_t size, uint6
     }
 
     uint64_t pgsz = 1ULL << (tt_bits + 3ULL);
+    /*pl_printf_("size = %llu\n", size);
+    pl_printf_("(va & (pgsz - 1ULL)) = %llu\n", (va & (pgsz - 1ULL)));
+    pl_printf_("(pa & (pgsz - 1ULL)) = %llu\n", (pa & (pgsz - 1ULL)));
+    pl_printf_("(size & (pgsz - 1ULL)) = %llu\n", (size & (pgsz - 1ULL)));
+    pl_printf_("size < pgsz = %d\n", size < pgsz);
+    pl_printf_("(va + size < va) = %d\n", (va + size < va));
+    pl_printf_("(pa + size < pa) = %d\n", (pa + size < pa));*/
+
     if((va & (pgsz - 1ULL)) || (pa & (pgsz - 1ULL)) || (size & (pgsz - 1ULL)) || size < pgsz || (va + size < va) || (pa + size < pa))
     {
         panic("map_range: called with bad arguments (0x%llx, 0x%llx, 0x%llx, ...)", va, pa, size);
@@ -283,13 +293,9 @@ void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
 }
 uint64_t early_heap_base;
 uint64_t gPongoSlide;
-bool gIs16k;
-extern int pl_printf_(const char* format, ...);
-extern bool pl_is_16k();
 unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 {
     pl_printf_("lowlevel_setup(%llu, %llu)\n", phys_off, phys_size);
-    gIs16k = pl_is_16k();
     if (is_16k()) {
         tt_bits = 11;
         tg0 = 0b10; // 16K
@@ -303,7 +309,6 @@ unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
         t0sz = 25;
         t1sz = 25;
     }
-    pl_printf_("is_16k() check passed, gIs16k %u\n", gIs16k);
     uint64_t pgsz = 1ULL << (tt_bits + 3);
     pl_printf_("pgsz = %llu\n", pgsz);
     ttb_alloc = ttb_alloc_early;
@@ -337,11 +342,11 @@ unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
 
-    pl_printf_("before el check\n");
     if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
-    pl_printf_("after el check\n");
 
+    pl_printf_("before exception vector set\n");
     set_vbar_el1((uint64_t)&exception_vector);
+    pl_printf_("after exception vector set\n");
     enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1, 0x200002034F4D91D);
     // pl_printf_("mmu enabled\n");
     unsigned long long buf = 0;
@@ -593,10 +598,7 @@ void vm_flush_by_addr_all_asid(uint64_t va) {
 }
 void vm_init() {
     if(kernel_vm_space.vm_space_table) panic("vm_init misuse");
-
     asid_table[0] |= 1; // reserve kernel ASID
-    is_16k_v = is_16k();
-
     task_current()->vm_space = &kernel_vm_space;
     kernel_vm_space.vm_space_table = alloc_contig((VM_SPACE_SIZE / PAGE_SIZE) / 8);
     bzero(kernel_vm_space.vm_space_table, (VM_SPACE_SIZE / PAGE_SIZE) / 8);

@@ -348,12 +348,12 @@ void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(
 	unsigned long long buf = 0;
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
-    /*__asm__ volatile(
+    __asm__ volatile(
         // "hallo my name is trash and i like to crash"
         "msr TPIDR_EL1, xzr\n"
 
         "msr DAIF, xzr\n"
-    );*/
+    );
     buf = lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
     rebase_pc(gPongoSlide);
     extern void set_exception_stack_core0();
