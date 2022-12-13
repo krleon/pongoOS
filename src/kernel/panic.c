@@ -30,6 +30,11 @@
 char preemption_over;
 
 char panic_did_enter = 0;
+extern int pl_printf_(const char* format, ...);
+extern int pl_vprintf_(const char* format, va_list va);
+#define iprintf pl_printf_
+#define viprintf pl_vprintf_
+#define puts(x) pl_printf_("%s\n", x)
 void panic(const char* str, ...) {
     disable_interrupts();
 

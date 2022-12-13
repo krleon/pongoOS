@@ -329,6 +329,11 @@ void apply_tunables()
     }
 }
 
+extern int pl_printf_(const char* format, ...);
+/*
+    BIG FAT WARNING:
+    All the payload functions WILL BE OVERWRITTEN at some point
+*/
 /*
 
     Name: pongo_entry
@@ -339,15 +344,16 @@ volatile void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t ori
 extern uint64_t gPongoSlide;
 void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point))
 {
+    pl_printf_("pongo_entry(%p, %p, %p)\n", kernel_args, entryp, exit_to_el1_image);    
 	unsigned long long buf = 0;
     gBootArgs = (boot_args*)kernel_args;
     gEntryPoint = entryp;
-    __asm__ volatile(
+    /*__asm__ volatile(
         // "hallo my name is trash and i like to crash"
         "msr TPIDR_EL1, xzr\n"
 
         "msr DAIF, xzr\n"
-    );
+    );*/
     buf = lowlevel_setup(gBootArgs->physBase & 0xFFFFFFFF, gBootArgs->memSize);
     rebase_pc(gPongoSlide);
     extern void set_exception_stack_core0();

@@ -26,6 +26,7 @@
  */
 #include <errno.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pongo.h>
 
 #define MAX_WANT_PAGES_IN_FREELIST 512
@@ -282,8 +283,13 @@ void map_full_ram(uint64_t phys_off, uint64_t phys_size) {
 }
 uint64_t early_heap_base;
 uint64_t gPongoSlide;
+bool gIs16k;
+extern int pl_printf_(const char* format, ...);
+extern bool pl_is_16k();
 unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
 {
+    pl_printf_("lowlevel_setup(%llu, %llu)\n", phys_off, phys_size);
+    gIs16k = pl_is_16k();
     if (is_16k()) {
         tt_bits = 11;
         tg0 = 0b10; // 16K
@@ -297,14 +303,17 @@ unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
         t0sz = 25;
         t1sz = 25;
     }
+    pl_printf_("is_16k() check passed, gIs16k %u\n", gIs16k);
     uint64_t pgsz = 1ULL << (tt_bits + 3);
+    pl_printf_("pgsz = %llu\n", pgsz);
     ttb_alloc = ttb_alloc_early;
-    volatile extern uint64_t start[] __asm__("start");
-    volatile uint64_t pongo_base = ((uint64_t) &start);
+    volatile extern uint64_t pongo_start[] __asm__("pongo_start");
+    volatile uint64_t pongo_base = ((uint64_t) &pongo_start);
     volatile extern uint64_t __bss_end[] __asm__("segment$end$__DATA");
     volatile uint64_t pongo_size = ((uint64_t) __bss_end) - pongo_base;
     volatile extern uint64_t __text_end[] __asm__("segment$start$__DATA");
     __unused volatile uint64_t pongo_text_size = ((uint64_t) __text_end) - pongo_base;
+    pl_printf_("pongo_start = %llu, pongo_base = %p, __bss_end = %llu, pongo_size = %llu, __text_end = %llu, pongo_text_size = %llu\n", pongo_start, pongo_base, __bss_end, pongo_size, __text_end, pongo_text_size);
 
     ttb_alloc_base = pongo_base - 0x4000;
 
@@ -328,10 +337,13 @@ unsigned long long lowlevel_setup(uint64_t phys_off, uint64_t phys_size)
     ram_phys_off = kCacheableView + phys_off;
     ram_phys_size = phys_size;
 
+    pl_printf_("before el check\n");
     if (!(get_el() == 1)) panic("pongoOS runs in EL1 only! did you skip pongoMon?");
+    pl_printf_("after el check\n");
 
     set_vbar_el1((uint64_t)&exception_vector);
     enable_mmu_el1((uint64_t)ttbr0, 0x13A402A00 | (tg0 << 14) | (tg1 << 30) | (t1sz << 16) | t0sz, 0x04ff00, (uint64_t)ttbr1, 0x200002034F4D91D);
+    // pl_printf_("mmu enabled\n");
     unsigned long long buf = 0;
     asm volatile ("mov %0, x3" : "=r"(buf) ::);
 

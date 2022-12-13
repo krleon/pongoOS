@@ -32,9 +32,7 @@ pid_t _getpid(void)
     return task_current()->pid;
 }
 
-#if 0
 int _kill(pid_t pid, int sig)
 {
     return ENOTSUP;
 }
-#endif

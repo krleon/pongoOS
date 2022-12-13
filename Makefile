@@ -142,9 +142,6 @@ $(BUILD)/Pongo.bin: $(BUILD)/vmacho $(BUILD)/Pongo | $(BUILD)
 $(BUILD)/Pongo: Makefile $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(EMBEDDED_CC) -o $@ $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
 
-Pongo-objects: Makefile $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(LIB)/lib/libc.a | $(BUILD)
-	$(EMBEDDED_CC) -c -Wno-unused-command-line-argument $(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS)
-
 $(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUILD)
 	$(CHECKRA1N_CC) -o $@ $(CHECKRA1N_C) $(EMBEDDED_CC_FLAGS) $(CHECKRA1N_CC_FLAGS)
 	$(STRIP) -x $@ -s $(CHECKRA1N_NOSTRIP)
@@ -152,6 +149,14 @@ $(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUIL
 
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
+
+%.obj:
+	@mkdir -p "$(BUILD)/obj"
+	@dst=$$(echo "$*" | sed -e 's|/|-|g' -e 's/$$/.o/g'); \
+		$(EMBEDDED_CC) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $* -c -Wno-unused-command-line-argument -o "$(BUILD)/obj/$${dst}"
+
+$(BUILD)/libpongo.a: $(shell echo '$(SRC)/boot/entry.S $(STAGE3_ENTRY_C) $(PONGO_C) $(PONGO_DRIVERS_C)' | sed -E -e 's/\.c( |$$)/.c.obj /g' -e 's/\.S( |$$)/.S.obj /g')
+	ar cru $(BUILD)/libpongo.a $(BUILD)/obj/*.o
 
 $(BUILD):
 	mkdir -p $@

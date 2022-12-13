@@ -24,13 +24,13 @@
  * SOFTWARE.
  *
  */
-.globl start
+.globl pongo_start
 .align 4
-start:
+pongo_start:
 // branch from x27 will end up here
     mov x9, x8
 // branch from x29 here
-    adr x4, start
+    adr x4, pongo_start
     mov x5, #0x800000000
     movk x5, #0x1800, lsl#16
     and x30, x30, 0x4

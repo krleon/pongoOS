@@ -468,6 +468,8 @@ extern void command_puts(const char* val);
 
 extern void pongo_syscall_entry(struct task* task, uint32_t sysnr, uint64_t* state);
 extern uint64_t vatophys_force(uint64_t kvaddr);
+
+extern bool gIs16k;
 #ifdef PONGO_PRIVATE
 #define STDOUT_BUFLEN 0x1000
 extern volatile uint8_t command_in_progress;
@@ -497,7 +499,8 @@ extern void map_full_ram(uint64_t phys_off, uint64_t phys_size);
 extern uint64_t linear_kvm_alloc(uint32_t size);
 static inline _Bool is_16k(void)
 {
-    return ((get_mmfr0() >> 20) & 0xf) == 0x1;
+    return gIs16k;
+    // return ((get_mmfr0() >> 20) & 0xf) == 0x1;
 }
 static inline void flush_tlb(void)
 {
