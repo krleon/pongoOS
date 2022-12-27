@@ -150,7 +150,7 @@ $(BUILD)/checkra1n-kpf-pongo: Makefile $(CHECKRA1N_C) $(LIB)/lib/libc.a | $(BUIL
 $(BUILD)/vmacho: Makefile $(AUX)/vmacho.c | $(BUILD)
 	$(CC) -Wall -O3 -o $@ $(AUX)/vmacho.c $(CFLAGS)
 
-%.obj:
+%.obj: $(LIB)/lib/libc.a
 	@mkdir -p "$(BUILD)/obj"
 	@dst=$$(echo "$*" | sed -e 's|/|-|g' -e 's/$$/.o/g'); \
 		$(EMBEDDED_CC) $(EMBEDDED_CC_FLAGS) $(PONGO_CC_FLAGS) $* -c -Wno-unused-command-line-argument -o "$(BUILD)/obj/$${dst}"
