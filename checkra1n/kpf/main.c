@@ -3143,7 +3143,7 @@ void command_kpf() {
     }
 
     struct kerninfo *info = NULL;
-    struct paleinfo *pinfo = NULL;
+    //struct paleinfo *pinfo = NULL;
     if (ramdisk_buf) {
         puts("KPF: Found ramdisk, appending kernelinfo");
 
@@ -3151,7 +3151,7 @@ void command_kpf() {
         ramdisk_buf = realloc(ramdisk_buf, ramdisk_size + 0x10000);
         info = (struct kerninfo*)(ramdisk_buf+ramdisk_size);
         bzero(info, sizeof(struct kerninfo));
-        pinfo = (struct paleinfo*)(*(uint64_t *)info + 0x1000);
+        //pinfo = (struct paleinfo*)(*(uint64_t *)info + 0x1000);
 
         *(uint32_t*)(ramdisk_buf) = ramdisk_size;
         ramdisk_size += 0x10000;
@@ -3162,9 +3162,9 @@ void command_kpf() {
         info->slide = xnu_slide_value(hdr);
         info->flags = checkra1n_flags;
     }
-    if (pinfo && rootdev) {
-        strcpy(pinfo->rootdev, rootdev);
-    }
+    //if (pinfo && rootdev) {
+    //    strcpy(pinfo->rootdev, rootdev);
+    //}
     if (checkrain_option_enabled(gkpf_flags, checkrain_option_verbose_boot))
         gBootArgs->Video.v_display = 0;
     tick_1 = get_ticks();
