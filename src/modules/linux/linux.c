@@ -38,174 +38,233 @@ bool ramdisk_initialized = false;
 
 char gLinuxCmdLine[LINUX_CMDLINE_SIZE] = {0};
 
+extern void fix_apple_common_ecore(void);
+extern void fix_apple_common(void);
+extern void fix_a7(void);
+extern void fix_a10(void);
+bool has_ecores;
+
+
+
+/* tunables for Linux */
+void apply_tunables(void)
+{
+    has_ecores = false;
+
+    /* Enable the FPU */
+    __asm__ volatile(
+        "mrs x28, CPACR_EL1\n"
+        "orr x28, x28, #0x300000\n"
+        "msr CPACR_EL1, x28\n"
+    );
+
+    __asm__ volatile(
+        // "hallo my name is trash and i like to crash"
+        "msr TPIDR_EL1, xzr\n"
+        "msr DAIF, xzr\n"
+    );
+
+    switch(socnum) {
+        case 0x8960:
+        case 0x7000:
+        case 0x7001:
+            fix_a7();
+            break;
+        case 0x8000:
+        case 0x8001:
+        case 0x8003:
+            fix_apple_common();
+            break;
+        case 0x8010:
+        case 0x8011:
+        case 0x8012:
+            has_ecores = true;
+            fix_a10();
+            break;
+        case 0x8015:
+            has_ecores = true;
+            fix_apple_common_ecore();
+            break;
+        default:
+            has_ecores = true;
+            fix_apple_common();
+            break;
+    }
+}
+
+extern bool has_ecores;
+
+bool is_ecore() {
+    uint64_t val;
+    __asm__ volatile("mrs\t%0, MPIDR_EL1" : "=r"(val));
+    return !(val & (1 << 16));
+}
+
+void fix_apple_common_ecore() {
+    __asm__ volatile(
+        // "unlock the core for debugging"
+        "msr OSLAR_EL1, xzr\n"
+
+        /* Common to all Apple targets */
+            "mrs    x28, S3_0_C15_C4_1\n"
+            "orr    x28, x28, #0x800\n" //ARM64_REG_HID4_DisDcMVAOps
+            "orr    x28, x28, #0x100000000000\n" //ARM64_REG_HID4_DisDcSWL2Ops
+            "msr    S3_0_C15_C4_1, x28\n"
+            "isb    sy\n"
+
+            /* dont die in wfi kthx */
+            "mrs     x28, S3_5_C15_C5_0\n"
+            "bic     x28, x28, #0x3000000\n"
+            "orr     x28, x28, #0x2000000\n"
+            "msr     S3_5_C15_C5_0, x28\n"
+
+            "isb sy\n"
+            "dsb sy\n"
+    );
+}
+
+void fix_apple_common() {
+    if(is_ecore() && has_ecores) {
+        fix_apple_common_ecore();
+        return;
+    }
+
+    __asm__ volatile(
+        // "unlock the core for debugging"
+        "msr OSLAR_EL1, xzr\n"
+
+        /* Common to all Apple targets */
+            "mrs    x28, S3_0_C15_C4_0\n"
+            "orr    x28, x28, #0x800\n" //ARM64_REG_HID4_DisDcMVAOps
+            "orr    x28, x28, #0x100000000000\n" //ARM64_REG_HID4_DisDcSWL2Ops
+            "msr    S3_0_C15_C4_0, x28\n"
+            "isb    sy\n"
+
+            /* dont die in wfi kthx */
+            "mrs     x28, S3_5_C15_C5_0\n"
+            "bic     x28, x28, #0x3000000\n"
+            "orr     x28, x28, #0x2000000\n"
+            "msr     S3_5_C15_C5_0, x28\n"
+
+            "isb sy\n"
+            "dsb sy\n"
+    );
+}
+
+void fix_a7() {
+    __asm__ volatile(
+        // "unlock the core for debugging"
+        "msr OSLAR_EL1, xzr\n"
+
+        /* Common to all Apple targets */
+            "mrs    x28, S3_0_C15_C4_0\n"
+            "orr    x28, x28, #0x800\n" //ARM64_REG_HID4_DisDcMVAOps
+            "orr    x28, x28, #0x100000000000\n" //ARM64_REG_HID4_DisDcSWL2Ops
+            "msr    S3_0_C15_C4_0, x28\n"
+            "isb    sy\n"
+
+        /* Cyclone / typhoon specific init thing */
+            "mrs     x28, S3_0_C15_C0_0\n"
+            "orr     x28, x28, #0x100000\n"//ARM64_REG_HID0_LoopBuffDisb
+            "msr     S3_0_C15_C0_0, x28\n"
+
+            "mrs     x28, S3_0_C15_C1_0\n"
+            "orr     x28, x28, #0x1000000\n"//ARM64_REG_HID1_rccDisStallInactiveIexCtl
+    //cyclone
+            "orr     x28, x28, #0x2000000\n"//ARM64_REG_HID1_disLspFlushWithContextSwitch
+            "msr     S3_0_C15_C1_0, x28\n"
+
+            "mrs     x28, S3_0_C15_C3_0\n"
+            "orr     x28, x28, #0x40000000000000\n"//ARM64_REG_HID3_DisXmonSnpEvictTriggerL2StarvationMode
+            "msr     S3_0_C15_C3_0, x28\n"
+
+            "mrs     x28, S3_0_C15_C5_0\n"
+            "and     x28, x28, #0xffffefffffffffff\n" //(~ARM64_REG_HID5_DisHwpLd)
+            "and     x28, x28, #0xffffdfffffffffff\n"//(~ARM64_REG_HID5_DisHwpSt)
+            "msr     S3_0_C15_C5_0, x28\n"
+
+            "mrs     x28, S3_0_C15_C8_0\n"
+            "orr     x28, x28, #0xff0\n" // ARM64_REG_HID8_DataSetID0_VALUE | ARM64_REG_HID8_DataSetID1_VALUE
+            "msr     S3_0_C15_C8_0, x28\n"
+        /* Cyclone / typhoon specific init thing end */
+
+            /* dont die in wfi kthx */
+            "mrs     x28, S3_5_C15_C5_0\n"
+            "bic     x28, x28, #0x3000000\n"
+            "orr     x28, x28, #0x2000000\n"
+            "msr     S3_5_C15_C5_0, x28\n"
+
+            "isb sy\n"
+            "dsb sy\n"
+    );
+}
+
+void fix_a10() {
+    __asm__ volatile(
+        // "unlock the core for debugging"
+        "msr OSLAR_EL1, xzr\n"
+
+        /* Common to all Apple targets */
+            "mrs    x28, S3_0_C15_C4_0\n"
+            "orr    x28, x28, #0x800\n" //ARM64_REG_HID4_DisDcMVAOps
+            "orr    x28, x28, #0x100000000000\n" //ARM64_REG_HID4_DisDcSWL2Ops
+            "msr    S3_0_C15_C4_0, x28\n"
+            "isb    sy\n"
+
+        /* Hurricane specific init thing */
+            // Increase Snoop reservation in EDB to reduce starvation risk
+            // Needs to be done before MMU is enabled
+            "mrs     x28, S3_0_C15_C5_0\n"
+            "bic     x28, x28, #0xc000\n"//ARM64_REG_HID5_CrdEdbSnpRsvd_mask
+            "orr     x28, x28, #0x8000\n"//ARM64_REG_HID5_CrdEdbSnpRsvd_VALUE
+            "msr     S3_0_C15_C5_0, x28\n"
+        /* Hurricane specific init thing end */
+
+            /* dont die in wfi kthx */
+            "mrs     x28, S3_5_C15_C5_0\n"
+            "bic     x28, x28, #0x3000000\n"
+            "orr     x28, x28, #0x2000000\n"
+            "msr     S3_5_C15_C5_0, x28\n"
+
+            "isb sy\n"
+            "dsb sy\n"
+    );
+}
+
 void linux_dtree_init(void)
 {
-    // TODO: TONS of error handling
-    char compatible_apple[64];
-    char *arm_io_type = dt_get_prop("arm-io", "device_type", NULL);
-    char soc_name[64];
-    char fdt_nodename[64];
-    strncpy(soc_name, arm_io_type, 6);
-    soc_name[5] = 0;
-    compatible_apple[0] = 0;
-    strcat(compatible_apple, "apple,");
-    strcat(compatible_apple, soc_name);
     if (fdt_initialized)
         free(fdt);
     fdt = malloc(LINUX_DTREE_SIZE);
     fdt_create_empty_tree(fdt, LINUX_DTREE_SIZE);
-
-    int node = 0, node1 = 0;
-    fdt_appendprop_string(fdt, node, "compatible", compatible_apple);
-    size_t size;
-    void *prop = dt_node_prop(gDeviceTree, "product-name", &size);
-    char name[20];
-    strncpy(name, prop, size);
-    name[size] = 0;
-    fdt_appendprop_string(fdt, node, "name", name);
-    fdt_appendprop_cell(fdt, 0, "#address-cells", 0x2);
-    fdt_appendprop_cell(fdt, 0, "#size-cells", 0x2);
-    fdt_appendprop_cell(fdt, 0, "interrupt-parent", 0x1);
-
-    /* Alias */
-    node = fdt_add_subnode(fdt, 0, "/aliases");
-    char serials[64];
-    siprintf(serials, "/soc/serial@%" PRIx64 "", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
-    fdt_appendprop_string(fdt, node, "serial0", serials);
-
-    /* CPU */
-    node = fdt_add_subnode(fdt, 0, "/cpus");
-    fdt_appendprop_string(fdt, node, "name", "cpus");
-    fdt_appendprop_cell(fdt, node, "#address-cells", 0x1);
-    fdt_appendprop_cell(fdt, node, "#size-cells", 0x0);
-
-    node1 = fdt_add_subnode(fdt, node, "/cpu@0");
-    fdt_appendprop_string(fdt, node1, "device_type", "cpu");
-    fdt_appendprop_string(fdt, node1, "compatible", "hx,v1");
-    fdt_appendprop_cell(fdt, node1, "reg", 0);
-
-    node1 = fdt_add_subnode(fdt, node, "/cpu@1");
-    fdt_appendprop_string(fdt, node1, "device_type", "cpu");
-    fdt_appendprop_string(fdt, node1, "compatible", "hx,v1");
-    fdt_appendprop_cell(fdt, node1, "reg", 1);
-
-    /* refclk */
-    node = fdt_add_subnode(fdt, 0, "/refclk24mhz");
-    fdt_appendprop_string(fdt, node, "compatible", "fixed-clock");
-    fdt_appendprop_string(fdt, node, "clock-output-names", "refclk24mhz");
-    fdt_appendprop_cell(fdt, node, "#clock-cells", 0x00000000);
-    fdt_appendprop_cell(fdt, node, "clock-frequency", 0x016e3600);
-    fdt_appendprop_cell(fdt, node, "phandle", 2);
-
-    /* Timer */
-    node = fdt_add_subnode(fdt, 0, "/timer");
-    fdt_appendprop_string(fdt, node, "name", "timer");
-    fdt_appendprop_string(fdt, node, "device_type", "timer");
-    fdt_appendprop_string(fdt, node, "compatible", "arm,armv8-timer");
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000001);
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000001);
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000f08);
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000001);
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000000);
-    fdt_appendprop_cell(fdt, node, "interrupts", 0x00000f08);
-
-    /* SoC */
-    node = fdt_add_subnode(fdt, 0, "/soc");
-    fdt_appendprop_string(fdt, node, "compatible", "simple-bus");
-    fdt_appendprop_cell(fdt, node, "#address-cells", 0x2);
-    fdt_appendprop_cell(fdt, node, "#size-cells", 0x2);
-    fdt_appendprop(fdt, node, "ranges", "", 0);
-
-    /* Interrupt controller: Apple AIC */
-    siprintf(fdt_nodename, "/interrupt-controller@%" PRIx64 "", (uint64_t)dt_get_u32_prop("aic", "reg") + gIOBase);
-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
-    fdt_appendprop_string(fdt, node1, "name", "interrupt_controller");
-    fdt_appendprop_string(fdt, node1, "device_type", "interrupt_controller");
-    fdt_appendprop_string(fdt, node1, "compatible", "hx,aic");
-    fdt_appendprop_cell(fdt, node1, "phandle", 0x1);
-    fdt_appendprop_cell(fdt, node1, "linux,phandle", 0x1);
-    fdt_appendprop_cell(fdt, node1, "#interrupt-cells", 0x3);
-    fdt_appendprop_addrrange(fdt, 0, node1, "reg",
-                             ((uint64_t)dt_get_u32_prop("aic", "reg")) + gIOBase,
-                             0x8000);
-    fdt_appendprop(fdt, node1, "interrupt-controller", "", 0);
-
-    /* UART */
-    siprintf(fdt_nodename, "/serial@%" PRIx64 "", (uint64_t)dt_get_u32_prop("uart0", "reg") + gIOBase);
-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
-    fdt_appendprop_string(fdt, node1, "compatible", "hx,uart");
-    fdt_appendprop_addrrange(fdt, 0, node1, "reg",
-                             ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase,
-                             0x4000);
-    fdt_appendprop_cell(fdt, node1, "interrupts", 0);
-    fdt_appendprop_cell(fdt, node1, "interrupts", dt_get_u32_prop("uart0", "interrupts"));
-    fdt_appendprop_cell(fdt, node1, "interrupts", 4);
-    fdt_appendprop_cell(fdt, node1, "clocks", 2);
-    fdt_appendprop_string(fdt, node1, "clock-names", "refclk");
-
-    /* DRAM */
-    node = fdt_add_subnode(fdt, 0, "/memory@800000000");
-    fdt_appendprop_addrrange(fdt, 0, node, "reg", 0x800000000, (gBootArgs->memSize - 0x02000000) & ~0x1FFFFFF);
-    fdt_appendprop_string(fdt, node, "device_type", "memory");
-
-    /* Reserved memory */
-    /*
-    node = fdt_add_subnode(fdt, 0, "/reserved-memory");
-    fdt_appendprop_cell(fdt, node, "#address-cells", 0x2);
-    fdt_appendprop_cell(fdt, node, "#size-cells", 0x2);
-    fdt_appendprop(fdt, node, "ranges", "", 0);
-
-    uint64_t nomap_area = 0x800000000 + gBootArgs->memSize - 0x02000000;
-    siprintf(fdt_nodename, "/fw_area@%" PRIx64 "", nomap_area);
-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
-    fdt_appendprop_addrrange(fdt, 0, node1, "reg", nomap_area, 0x04000000);
-    fdt_appendprop(fdt, node1, "no-map", "", 0);
-*/
 }
 
-void linux_dtree_late(void)
+int linux_dtree_overlay(char *boot_args)
 {
-    /* Chosen subnode for arguments */
-    char fdt_nodename[64];
-    int node = fdt_add_subnode(fdt, 0, "/chosen");
-    int node1 = 0;
-    fdt_appendprop(fdt, node, "ranges", "", 0);
+    int node = 0, node1 = 0, ret = 0;
+    char fdt_nodename[64], *key;
+    uint64_t fb_size;
+    uint32_t width;
 
-    char cmdline[256];
-    siprintf(cmdline, "debug earlycon=hx_uart,0x%" PRIx64 " console=tty0 console=ttyHX0", ((uint64_t)dt_get_u32_prop("uart0", "reg")) + gIOBase);
-    fdt_appendprop_string(fdt, node, "bootargs", cmdline);
+    /* Fill the RAM base & size */
+    node = fdt_path_offset(fdt, "/");
+    node1 = fdt_path_offset(fdt, "/memory@800000000");
+    if (node < 0 || node1 < 0)
+    {
+        panic("Failed to find /memory@800000000 FDT node!");
+    }
 
-    /* simplefb dart-apcie3*/
-    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
-    fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
-    fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
-    fdt_appendprop_cell(fdt, node1, "height", gBootArgs->Video.v_height);
-    fdt_appendprop_cell(fdt, node1, "stride", gBootArgs->Video.v_rowBytes);
-    fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
-    fdt_appendprop_string(fdt, node1, "status", "okay");
-    fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
-}
-
-void linux_dtree_overlay(char *boot_args)
-{
-    char fdt_nodename[64];
-    int node = 0, node1 = 0;
-    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
-    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
-    fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_height * gBootArgs->Video.v_rowBytes);
-    fdt_appendprop_cell(fdt, node1, "width", gBootArgs->Video.v_width);
-    fdt_appendprop_cell(fdt, node1, "height", gBootArgs->Video.v_height);
-    fdt_appendprop_cell(fdt, node1, "stride", gBootArgs->Video.v_rowBytes);
-    fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
-    fdt_appendprop_string(fdt, node1, "status", "okay");
-    fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
+    ret = fdt_appendprop_addrrange(fdt, node, node1, "reg", gBootArgs->physBase, gBootArgs->memSize);
+    if (ret < 0)
+    {
+        panic("Failed to fill /memory FDT node!");
+    }
 
     node = fdt_path_offset(fdt, "/chosen");
     if (node < 0)
     {
-        iprintf("Failed to find /chosen");
-        return;
+        iprintf("Failed to find /chosen FDT node!");
+        return -1;
     }
 
     if (ramdisk != NULL)
@@ -214,17 +273,24 @@ void linux_dtree_overlay(char *boot_args)
         void *rd_end = (void *)((((uint64_t)rd_start) + ramdisk_size + 7ull) & -8ull);
 
         int ret = fdt_setprop_u64(fdt, node, "linux,initrd-start", (uint64_t) rd_start);
-        if (ret < 0)
+        if (ret < 0) 
         {
             iprintf("Cannot update chosen node [linux,initrd-start]\n");
-            return;
+            return -1;
         }
 
         ret = fdt_setprop_u64(fdt, node, "linux,initrd-end", (uint64_t) rd_end);
-        if (ret < 0)
+        if (ret < 0) 
         {
             iprintf("Cannot update chosen node [linux,initrd-end]\n");
-            return;
+            return -1;
+        }
+
+        ret = fdt_add_mem_rsv(fdt, (uint64_t)rd_start, (uint64_t)(rd_end - rd_start));
+        if (ret < 0)
+        {
+            iprintf("Could not reserve initrd region in FDT");
+            return -1;
         }
 
         iprintf("initrd @ %p-%p\n", rd_start, rd_end);
@@ -232,14 +298,93 @@ void linux_dtree_overlay(char *boot_args)
 
     if (boot_args)
     {
-        if (fdt_delprop(fdt, node, "bootargs") < 0)
+        ret = fdt_delprop(fdt, node, "bootargs");
+        if (ret < 0 && ret != -FDT_ERR_NOTFOUND)
         {
-            iprintf("Failed to delete bootargs");
-            return;
+            iprintf("Failed to delete bootargs: %d", ret);
+            return -1;
         }
 
         fdt_appendprop_string(fdt, node, "bootargs", boot_args);
     }
+
+    /* Simple framebuffer node */
+    /* Some devices are really stupid */
+    key = dt_get_prop("device-tree", "target-type", NULL);
+    if (!strcmp(key, "N61") || // 6
+        !strcmp(key, "N71") || !strcmp(key, "N71m") || // 6S
+        !strcmp(key, "D10") || !strcmp(key, "D101") || // 7
+        !strcmp(key, "D20") || !strcmp(key, "D201")) // 8
+        width = gBootArgs->Video.v_width + 2;
+    else if (!strcmp(key, "N56")  || // 6 Plus
+             !strcmp(key, "N66")  || !strcmp(key, "N66m") || // 6S Plus
+             !strcmp(key, "D11")  || !strcmp(key, "D111") || // 7 Plus
+             !strcmp(key, "D211") || !strcmp(key, "D21")) // 8 Plus
+        width = gBootArgs->Video.v_width + 8;
+    else if (!strcmp(key, "D22")  || !strcmp(key, "D221")) // X
+        width = gBootArgs->Video.v_width + 11;
+    else if (!strcmp(key, "J207") || !strcmp(key, "J208")) // iPad Pro (10.5-inch)
+        width = gBootArgs->Video.v_width + 12;
+    else
+        width = gBootArgs->Video.v_rowBytes >> 2;
+
+    fb_size = gBootArgs->Video.v_height * width * 4;
+
+    siprintf(fdt_nodename, "/framebuffer@%lx", gBootArgs->Video.v_baseAddr);
+    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
+    if (node < 0)
+    {
+        iprintf("Failed to add framebuffer node");
+        return -1;
+    }
+
+    fdt_appendprop_addrrange(fdt, node, node1, "reg", gBootArgs->Video.v_baseAddr, fb_size);
+    fdt_appendprop_cell(fdt, node1, "width", width);
+    fdt_appendprop_cell(fdt, node1, "height", gBootArgs->Video.v_height);
+    fdt_appendprop_cell(fdt, node1, "stride", width * 4);
+    if ((gBootArgs->Video.v_depth & 0xff) == 30) // X is *very* special
+        fdt_appendprop_string(fdt, node1, "format", "x2r10g10b10");
+    else
+        fdt_appendprop_string(fdt, node1, "format", "a8b8g8r8");
+    fdt_appendprop_string(fdt, node1, "compatible", "simple-framebuffer");
+
+    /* Reserved memory */
+    node = fdt_path_offset(fdt, "/reserved-memory");
+    if (node < 0)
+    {
+        iprintf("Failed to find /reserved-memory");
+        return -1;
+    }
+
+    /* Reserve the framebuffer (so that Linux doesn't overwrite it) */
+    siprintf(fdt_nodename, "/memory@%lx", gBootArgs->Video.v_baseAddr);
+    node1 = fdt_add_subnode(fdt, node, fdt_nodename);
+    if (node1 < 0)
+    {
+        iprintf("Failed to reserve framebuffer region");
+        return -1;
+    }
+    fdt_appendprop_addrrange(fdt, 0, node1, "reg", gBootArgs->Video.v_baseAddr, fb_size);
+    fdt_appendprop(fdt, node1, "no-map", "", 0);
+    iprintf("framebuffer @ 0x%lx - 0x%llx\n", gBootArgs->Video.v_baseAddr, gBootArgs->Video.v_baseAddr+fb_size);
+
+    if (gBootArgs->physBase > 0x800000000)
+    {
+        /* Reserve TZ/low FW regions and such */
+        node1 = fdt_add_subnode(fdt, node, "/memory@800000000");
+        if (node1 < 0)
+        {
+            iprintf("Failed to reserve TZ/FW region");
+            return -1;
+        }
+        fdt_appendprop_addrrange(fdt, 0, node1, "reg", 0x800000000, (gBootArgs->physBase - 0x800000000));
+        fdt_appendprop(fdt, node1, "no-map", "", 0);
+        iprintf("low fw mem reserve @ 0x800000000-0x%llx\n", gBootArgs->physBase);
+    }
+    else if (gBootArgs->physBase < 0x800000000)
+        panic("sar how did you get under dram base");
+
+    return 0;
 }
 
 bool linux_can_boot()
@@ -286,7 +431,9 @@ void fdt_select_dtree(void *fdt)
     iprintf("Device tree for %s not found.\n", key);
 }
 
-void linux_prep_boot()
+void *gLinuxFDT = NULL;
+
+void linux_prep_boot(void)
 {
     if (!ramdisk_initialized)
     {
@@ -311,7 +458,6 @@ void linux_prep_boot()
     if (!fdt_initialized)
     {
         linux_dtree_init();
-        linux_dtree_late();
     }
     else
     {
@@ -323,7 +469,10 @@ void linux_prep_boot()
         }
 
         iprintf("Kernel command line: %s\n", gLinuxCmdLine);
-        linux_dtree_overlay(gLinuxCmdLine);
+        if (linux_dtree_overlay(gLinuxCmdLine) < 0)
+        {
+            panic("Booting Linux failed!");
+        }
     }
 
 #define pixfmt0 (&disp[0x402c / 4])
@@ -340,29 +489,106 @@ void linux_prep_boot()
     *colormatrix_mul_31 = 4095;
     *colormatrix_mul_32 = 4095;
     *colormatrix_mul_33 = 4095;
-    puts("This is only supported on iPhone 7 for now and works to a lesser extent on other A10 devices. Behavior on non-A10 devices is undefined!!");
 
-    gEntryPoint = (void *)(0x800080000);
+    __attribute__((packed))
+    struct kflags {
+        bool big_endian: 1;
+        uint8_t pagesize: 2;
+        bool may_use_memory_below_image: 1;
+        uint64_t reserved: 60;
+    } kernel_flags;
+
+    uint64_t *reg = (uint64_t *)0x1feed5c00b7d00;
     uint64_t image_size = loader_xfer_recv_count;
-    gLinuxStage = (void *)alloc_contig(image_size + LINUX_DTREE_SIZE);
-    size_t dest_size = 0x10000000;
-    int res = unlzma_decompress((uint8_t *)gLinuxStage, &dest_size, loader_xfer_recv_data, image_size);
-    if (res != SZ_OK)
+    uint64_t text_offset = 0;
+    uint64_t magic;
+    size_t dest_size = image_size * 6;
+    dt_node_t *memmap = NULL;
+    int ret = 0;
+
+    /*
+     * This is a really hacky guesstimate, but it works on all devices..
+     * The main issue with the entrypoint is that we need a contiguous
+     * region where we can stuff like >30 megabytes worth of Linux. A good
+     * place to do so is before or after SEPFW. But it doesn't really matter
+     * as long as it works..
+     */
+    gEntryPoint = (void *)0x803000000;
+
+    memmap = dt_find(gDeviceTree, "memory-map");
+    reg = dt_prop(memmap, "SEPFW", NULL);
+    if (reg)
+    {
+        ret = fdt_add_mem_rsv(fdt, reg[0], reg[1]);
+        if (ret < 0) {
+            iprintf("Failed to reserve SEPFW region!");
+        }
+        iprintf("SEPFW @ 0x%llx - 0x%llx\n", reg[0], reg[0]+reg[1]);
+    }
+    else
+        iprintf("Failed to find SEPFW region in ADT!");
+
+    gLinuxStage = (void *)alloc_contig(dest_size + LINUX_DTREE_SIZE);
+    ret = unlzma_decompress((uint8_t *)gLinuxStage, &dest_size, loader_xfer_recv_data, image_size);
+    if (ret != SZ_OK)
     {
         puts("Assuming decompressed kernel.");
         image_size = *(uint64_t *)(loader_xfer_recv_data + 16);
+        text_offset = *(uint64_t *)(loader_xfer_recv_data + 8);
+        kernel_flags = *(struct kflags *)(loader_xfer_recv_data + 24);
+        magic = *(uint64_t *)(loader_xfer_recv_data + 56);
         memcpy(gLinuxStage, loader_xfer_recv_data, image_size);
     }
     else
     {
+        text_offset = *(uint64_t *)(gLinuxStage + 8);
         image_size = *(uint64_t *)(gLinuxStage + 16);
+        kernel_flags = *(struct kflags *)(gLinuxStage + 24);
+        magic = *(uint64_t *)(gLinuxStage + 56);
     }
-    void *gLinuxDtre = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
-    memcpy(gLinuxDtre, fdt, LINUX_DTREE_SIZE);
+    if (magic != 0x644d5241) { /* ARM\x64 */
+        panic("bad kernel magic!");
+    }
+    if (kernel_flags.big_endian) {
+        panic("big endian kernel detected!");
+    }
+    if (socnum == 0x8960 || socnum == 0x7000 || socnum == 0x7001) {
+        if (kernel_flags.pagesize != 0 && kernel_flags.pagesize != 1) {
+            panic("kernel of incorrect page size supplied!");
+        }
+    } else {
+        if (kernel_flags.pagesize != 0 && kernel_flags.pagesize != 2) {
+            panic("kernel of incorrect page size supplied!");
+        }
+    }
+    iprintf("text_offset=0x%llx, gPhysBase=0x%llx\n", text_offset, gBootArgs->physBase);
+
+    gLinuxFDT = (void *)((((uint64_t)gLinuxStage) + image_size + 7ull) & -8ull);
+    ret = fdt_add_mem_rsv(fdt, (uint64_t)gLinuxFDT - kCacheableView + 0x800000000ULL, LINUX_DTREE_SIZE);
+    if (ret < 0)
+        iprintf("Could not reserve FDT region in FDT, here be dragons..");
+
+    iprintf("FDT @ 0x%llx - 0x%llx\n", (uint64_t)(gLinuxFDT - kCacheableView + 0x800000000ULL), (uint64_t)(gLinuxFDT - kCacheableView + 0x800000000ULL)+LINUX_DTREE_SIZE);
+
+    memcpy(gLinuxFDT, fdt, LINUX_DTREE_SIZE);
     gLinuxStageSize = image_size + LINUX_DTREE_SIZE;
 
+    /* Find a region that we can fit Linux into */
+    // arm64/booting.txt: must be aligned to 2 MiB
+    // between gPhysBase and SEPFW
+    if (gBootArgs->physBase != 0x800000000ULL) gEntryPoint = (void*)(gBootArgs->physBase & ~0x1fffff) + 0x200000 + text_offset;
+    if ((reg[0] - (uint64_t)gEntryPoint) < (gLinuxStageSize + 0x4000)) { /* reserve a page for pongo boot tramp */
+        // after SEPFW
+        gEntryPoint = (void*)((reg[0] + reg[1]) & ~0x1fffff) + 0x200000 + text_offset;
+    }
+
+    if (gEntryPoint < gBootArgs->Video.v_baseAddr && (gEntryPoint + gLinuxStageSize + 0x4000) > gBootArgs->Video.v_baseAddr) {
+        panic("Linux overlapped with framebuffer!");
+    }
+
     gBootArgs = (void *)((((uint64_t)gEntryPoint) + image_size + 7ull) & -8ull);
-    iprintf("Booting Linux: %p(%p)\n", gEntryPoint, gBootArgs);
+    iprintf("Booting Linux: %p-%p\n", gEntryPoint, gEntryPoint+gLinuxStageSize);
+
     gLinuxStage = (void *)(((uint64_t)gLinuxStage) - kCacheableView + 0x800000000);
 }
 
@@ -370,4 +596,5 @@ void linux_boot()
 {
     memcpy(gEntryPoint, gLinuxStage, gLinuxStageSize);
     gTopOfKernelData = (uint64_t)gEntryPoint + gLinuxStageSize;
+    apply_tunables();
 }

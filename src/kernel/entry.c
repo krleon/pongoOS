@@ -335,7 +335,10 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
         {
             xnu_boot();
         }
-        exit_to_el1_image(gBootArgs, gEntryPoint, (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL));
+        if(gBootFlag == BOOT_FLAG_LINUX)
+            exit_to_el1_image(gBootArgs, gEntryPoint, 0);
+        else
+            exit_to_el1_image(gBootArgs, gEntryPoint, (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL));
     }
     screen_puts("didn't boot?!");
     while(1)

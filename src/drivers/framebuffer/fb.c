@@ -229,6 +229,7 @@ void fbinfo() {
     printf("gHeight     : %ld\n", gBootArgs->Video.v_height);
     printf("fbbase      : %016" PRIx64 "\n", gBootArgs->Video.v_baseAddr);
     printf("fbsize      : %016" PRIx64 "\n", (gBootArgs->Video.v_height) * (gBootArgs->Video.v_rowBytes >> 2) * 4);
+    printf("fbdepth = 0x%lx ", gBootArgs->Video.v_depth);
 }
 
 uint32_t nextColor(uint32_t color)
