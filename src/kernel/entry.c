@@ -243,7 +243,9 @@ __attribute__((noinline)) void pongo_entry_cached()
 
     switch(gBootFlag)
     {
-        default: // >4
+        default: // >5
+        case BOOT_FLAG_M1N1: // 5
+            break;
         case BOOT_FLAG_RAW: // 4
             break;
 
@@ -330,6 +332,9 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
         if(gBootFlag == BOOT_FLAG_LINUX)
         {
             linux_boot();
+        }
+        else if (gBootFlag == BOOT_FLAG_M1N1) {
+            jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000800, (uint64_t)gBootArgs,  (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL), (uint64_t)gEntryPoint);
         }
         else
         {

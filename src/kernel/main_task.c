@@ -38,6 +38,7 @@ void shell_main();
 */
 
 uint64_t gBootTimeTicks;
+char gFWVersion[256];
 void pongo_main_task() {
     gBootTimeTicks = get_ticks();
 
@@ -86,6 +87,7 @@ void pongo_main_task() {
     screen_mark_banner();
 
     char *fwversion = dt_get_prop("/chosen", "firmware-version", NULL);
+    strlcpy(gFWVersion, fwversion, 256);
     iprintf("Booted by: %s\n", fwversion);
     strcpy(fwversion, "pongoOS-" PONGO_VERSION);
 #ifdef __clang__
