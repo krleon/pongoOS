@@ -110,7 +110,7 @@ extern volatile char gBootFlag;
 #define BOOT_FLAG_DEFAULT 0
 #define BOOT_FLAG_HARD 1
 #define BOOT_FLAG_HOOK 2
-// 3: Reserved
+#define BOOT_FLAG_M1N1 3
 #define BOOT_FLAG_RAW 4
 
 typedef uint64_t lock;

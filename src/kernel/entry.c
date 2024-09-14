@@ -245,6 +245,7 @@ __attribute__((noinline)) void pongo_entry_cached()
     {
         default: // >4
         case BOOT_FLAG_RAW: // 4
+        case BOOT_FLAG_M1N1: // 3
             break;
 
         case BOOT_FLAG_HOOK: // 2
@@ -291,7 +292,7 @@ __attribute__((noinline)) void pongo_entry_cached()
 */
 extern void set_exception_stack_core0();
 extern void lowlevel_set_identity(void);
-extern _Noreturn void jump_to_image_extended(uint64_t image, uint64_t args, uint64_t tramp, uint64_t original_image);
+extern _Noreturn void jump_to_image_extended(void *image, void *args, void *tramp, void *original_image);
 extern uint64_t gPongoSlide;
 
 _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_el1_image)(void *boot_args, void *boot_entry_point, void *trampoline))
@@ -308,23 +309,32 @@ _Noreturn void pongo_entry(uint64_t *kernel_args, void *entryp, void (*exit_to_e
     set_exception_stack_core0();
     gFramebuffer = (uint32_t*)gBootArgs->Video.v_baseAddr;
     lowlevel_cleanup();
-    if(gBootFlag == BOOT_FLAG_RAW)
+
+    // Unused space above kernel static area
+    void *boot_tramp = (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL);
+    if(gBootFlag == BOOT_FLAG_RAW || gBootFlag == BOOT_FLAG_M1N1)
     {
         // We're in EL1 here, but we might need to go back to EL3
-        uint64_t pfr0;
-        __asm__ volatile("mrs %0, id_aa64pfr0_el1" : "=r"(pfr0));
-        if((pfr0 & 0xf000) != 0)
+        if((__builtin_arm_rsr64("id_aa64pfr0_el1") & 0xf000) != 0)
         {
             __asm__ volatile("smc 0"); // elevate to EL3
         }
+        uint64_t entryOff = 0x800;
+        if(gBootFlag == BOOT_FLAG_RAW)
+        {
+            boot_tramp = NULL;
+            entryOff = 0;
+        }
         // XXX: We should really replace loader_xfer_recv_data with something dedicated here.
-        jump_to_image_extended(((uint64_t)loader_xfer_recv_data) - kCacheableView + 0x800000000, (uint64_t)gBootArgs, 0, (uint64_t)gEntryPoint);
+        void *image = (void*)((uint64_t)loader_xfer_recv_data - kCacheableView + 0x800000000 + entryOff);
+        jump_to_image_extended(image, gBootArgs, boot_tramp, gEntryPoint);
     }
     else
     {
         xnu_boot();
-        exit_to_el1_image(gBootArgs, gEntryPoint, (void*)((gTopOfKernelData + 0x3fffULL) & ~0x3fffULL));
+        exit_to_el1_image(gBootArgs, gEntryPoint, boot_tramp);
     }
+
     screen_puts("didn't boot?!");
     while(1)
     {}
